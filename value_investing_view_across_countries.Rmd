@@ -1,0 +1,1595 @@
+---
+title: "Opportunity of value investing: a brief view across countries"
+date: "3 février 2023"
+output:
+  html_document:
+    code_folding: show
+    toc: true
+    toc_float: true
+    number_sections: true 
+    df_print: paged
+---
+
+# Preparation & Data Cleaning
+
+## Data Preparation
+
+### Import of data tables
+
+We select corporate finance data collected by Pr. Aswath Damodaran (NYU).
+
+**Process:**
+
+Import of XLS data tables for each year from the following pages:
+
+-   Archived data (2013 to 2021): <https://pages.stern.nyu.edu/~adamodar/New_Home_Page/dataarchived.html#multiples>
+-   Recent data (2023): <https://pages.stern.nyu.edu/~adamodar/New_Home_Page/datacurrent.html#multiples>
+-   Notes:
+    -   Data missing for year 2022
+    -   Exclusion of 2021 and 2023 data tables due to lack of matching in structure
+
+### Various data preparation tasks
+
+-   **Step 1:** Rename the columns of df 2013 using the columns names of df 2014 to 2020
+
+```{r warning = FALSE, message = FALSE, results=FALSE}
+
+load("D:/corporate_finance_measure/corporate_finance_measure_data.RData")  # Load data
+
+pacman::p_load(  # Load package
+  dplyr,
+  tidyverse,
+  magrittr 
+)
+
+corporate_finance_measure_2013 <- corporate_finance_measure_2013 %>%  # Rename columns
+  rename(
+    "Sum of Market Cap (in US $)" = "Aggregate Market Cap",
+    "Sum of Total Debt incl leases (in US $)" = "Aggregate Total Debt",
+    "Sum of Firm Value (in US $)" = "Aggregate Firm Value",
+    "Sum of Cash" = "Aggregate Cash",
+    "Sum of Enterprise Value (in US $)" = "Aggregate Enterprise Value"
+)
+
+```
+
+-   **Step 2:** Add a column to each dataframe indicating the year of publication
+
+```{r warning = FALSE, message = FALSE}
+
+corporate_finance_measure_2013 <- corporate_finance_measure_2013 %>%
+  add_column(Year = "2013")
+
+corporate_finance_measure_2014 <- corporate_finance_measure_2014 %>%
+  add_column(Year = "2014")
+
+corporate_finance_measure_2015 <- corporate_finance_measure_2015 %>%
+  add_column(Year = "2015")
+
+corporate_finance_measure_2016 <- corporate_finance_measure_2016 %>%
+  add_column(Year = "2016")
+
+corporate_finance_measure_2017 <- corporate_finance_measure_2017 %>%
+  add_column(Year = "2017")
+
+corporate_finance_measure_2018 <- corporate_finance_measure_2018 %>%
+  add_column(Year = "2018")
+
+corporate_finance_measure_2019 <- corporate_finance_measure_2019 %>%
+  add_column(Year = "2019")
+
+corporate_finance_measure_2020 <- corporate_finance_measure_2020 %>%
+  add_column(Year = "2020")
+
+```
+
+-   **Step 3:** Create a single dataframe putting together multiple annual dataframes (2013 to 2020)
+
+```{r warning = FALSE, message = FALSE, results=FALSE}
+
+corporate_finance_measure <- bind_rows(corporate_finance_measure_2013, corporate_finance_measure_2014,corporate_finance_measure_2015,corporate_finance_measure_2015,corporate_finance_measure_2016,corporate_finance_measure_2017,corporate_finance_measure_2018,corporate_finance_measure_2019,corporate_finance_measure_2020) # Creating a single df
+
+names(corporate_finance_measure) # Checking matching column names between df
+
+corporate_finance_measure <- corporate_finance_measure[,c("Year", # Selecting only key columns
+                                                          "Country",
+                                                          "Number of firms",
+                                                          "Sum of Market Cap (in US $)",
+                                                          "Sum of Total Debt incl leases (in US $)",
+                                                          "Sum of Firm Value (in US $)",
+                                                          "Sum of Cash",
+                                                          "Sum of Enterprise Value (in US $)",
+                                                          "Average of Current PE",
+                                                          "Average of PEG",
+                                                          "Average of PBV",
+                                                          "Average of PS",
+                                                          "Average of Cash/ Firm Value",
+                                                          "Average of EV/EBIT",
+                                                          "Average of EV/EBITDA",
+                                                          "Average of EV/Invested Capital",
+                                                          "Average of EV/Sales",
+                                                          "Average of Historical growth in Revenues - Last 5 years",
+                                                          "Average of Dividend Yield"
+                                                          )]
+
+```
+
+## Data Cleaning
+
+-   **Task 1:** Multiplied by 100 "Historical growth in Revenues" & "Dividend Yield" and rename column
+
+```{r warning = FALSE, message = FALSE, results=FALSE}
+
+corporate_finance_measure$`Average of Historical growth in Revenues - Last 5 years` <- corporate_finance_measure$`Average of Historical growth in Revenues - Last 5 years`*100
+
+corporate_finance_measure$`Average of Dividend Yield` <- corporate_finance_measure$`Average of Dividend Yield`*100
+
+corporate_finance_measure <- corporate_finance_measure %>%  # Rename columns
+  rename(
+    "Average of Historical growth in Revenues - Last 5 years (in %)" = "Average of Historical growth in Revenues - Last 5 years",
+    "Average of Dividend Yield (in %)" = "Average of Dividend Yield"
+  )
+
+```
+
+-   **Task 2:** Remove "total world amount" for each year
+
+```{r warning = FALSE, message = FALSE, results=FALSE}
+
+unique(corporate_finance_measure$Country) # Reading of unique values
+
+corporate_finance_measure <-subset(corporate_finance_measure, Country!="Grand Total" & Country!="Total Market") # Removing
+
+```
+
+-   **Task 3:** Exclusion of countries with a large share of missing values
+
+    -   *Note:* We observe, after a manual exploration, that a large part of the missing values are concentrated in the countries with the lowest market capitalization - most precisely these belong to the top two deciles of the sample.
+
+```{r warning = FALSE, message = FALSE, results=FALSE}
+
+# Step 1; Average MC by country 
+MC_Country <- group_by(corporate_finance_measure, Country) %>% 
+  summarize(m = mean(`Sum of Market Cap (in US $)`))
+
+# Step 2: Create a dataframe excluding countries belong to the top two firts quantiles 
+
+top_MC <- MC_Country %>%
+  select(Country, m) %>%
+  filter(m >= quantile(m, .2, na.rm = T)) 
+
+# Step 3: Excluding of countries in the principale dataframe
+
+corporate_finance_measure <- corporate_finance_measure %>%
+  filter(Country %in% top_MC$Country)
+
+```
+
+-   **Task 4:** Converting "Year" from character to date format
+
+```{r}
+corporate_finance_measure$Year <- as.numeric(as.character(corporate_finance_measure$Year)) # convert character to date format
+```
+
+## Adding a qualitative variable: level of economic development
+
+In order to explore a possible correlation between the economic development and the oppornuties in value investing, we add an economic and human development index for each country (indicator and data based on the study by [Bouron et *al*. (2022)](https://geoconfluences.ens-lyon.fr/informations-scientifiques/dossiers-thematiques/inegalites/articles/rdecoupage-economique-mondial)):
+
+```{r warning = FALSE, message = FALSE, results=FALSE}
+
+corporate_finance_measure <- corporate_finance_measure %>% # Adding a new column 
+  add_column(Economic_development_level = "") 
+
+corporate_finance_measure$Economic_development_level[corporate_finance_measure$Country == "Canada" | # Assigning level of economic development = 6
+  corporate_finance_measure$Country == "Israel" |
+  corporate_finance_measure$Country == "Japan" |
+  corporate_finance_measure$Country == "Monaco" |
+  corporate_finance_measure$Country == "Netherlands" |
+  corporate_finance_measure$Country == "Switzerland" |
+  corporate_finance_measure$Country == "United States" |
+  corporate_finance_measure$Country == "Australia" |
+  corporate_finance_measure$Country == "Denmark" |
+  corporate_finance_measure$Country == "Finland" |
+  corporate_finance_measure$Country == "Germany" |
+  corporate_finance_measure$Country == "Luxembourg" |
+  corporate_finance_measure$Country == "Malta" |
+  corporate_finance_measure$Country == "New Zealand" |
+  corporate_finance_measure$Country == "Austria" | 
+  corporate_finance_measure$Country == "France" | 
+  corporate_finance_measure$Country == "Ireland" | 
+  corporate_finance_measure$Country == "Belgium" | 
+  corporate_finance_measure$Country == "Iceland" | 
+  corporate_finance_measure$Country == "Norway" | 
+  corporate_finance_measure$Country == "Sweden" |  
+  corporate_finance_measure$Country == "United Kingdom"] <- 6
+
+corporate_finance_measure$Economic_development_level[corporate_finance_measure$Country == "Bahrain" | # Assigning level of economic development = 5
+  corporate_finance_measure$Country == "Czech Republic" |
+  corporate_finance_measure$Country == "Estonia" |
+  corporate_finance_measure$Country == "Greece" |
+  corporate_finance_measure$Country == "Kuwait" |
+  corporate_finance_measure$Country == "Lithuania" |
+  corporate_finance_measure$Country == "Portugal" |    
+  corporate_finance_measure$Country == "South Korea" |
+  corporate_finance_measure$Country == "Italy" |
+  corporate_finance_measure$Country == "Latvia" |
+  corporate_finance_measure$Country == "Qatar" |
+  corporate_finance_measure$Country == "Slovakia" |
+  corporate_finance_measure$Country == "Spain" |
+  corporate_finance_measure$Country == "Uruguay" |
+  corporate_finance_measure$Country == "Croatia" |
+  corporate_finance_measure$Country == "Hungary" |
+  corporate_finance_measure$Country == "Lebanon" |
+  corporate_finance_measure$Country == "Slovenia" |    
+  corporate_finance_measure$Country == "United Arab Emirates" |  
+  corporate_finance_measure$Country == "Bahamas" |  
+  corporate_finance_measure$Country == "Cyprus" |  
+  corporate_finance_measure$Country == "Poland"] <- 5
+
+corporate_finance_measure$Economic_development_level[corporate_finance_measure$Country == "Argentina" | # Assigning level of economic development = 4
+  corporate_finance_measure$Country == "Bulgaria" |
+  corporate_finance_measure$Country == "China" |
+  corporate_finance_measure$Country == "Georgia" |
+  corporate_finance_measure$Country == "Malaysia" |
+  corporate_finance_measure$Country == "Saudi Arabia" |
+  corporate_finance_measure$Country == "Singapore" |
+  corporate_finance_measure$Country == "Honduras" |
+  corporate_finance_measure$Country == "Colombia" |
+  corporate_finance_measure$Country == "Hong Kong" |
+  corporate_finance_measure$Country == "Indonesia" |
+  corporate_finance_measure$Country == "Jordan" |
+  corporate_finance_measure$Country == "Mongolia" |
+  corporate_finance_measure$Country == "Pakistan" |
+  corporate_finance_measure$Country == "Peru" |
+  corporate_finance_measure$Country == "Ukraine" |
+  corporate_finance_measure$Country == "Brazil" |
+  corporate_finance_measure$Country == "Ecuador" |
+  corporate_finance_measure$Country == "Kazakhstan" |
+  corporate_finance_measure$Country == "Morocco" |
+  corporate_finance_measure$Country == "Palestinian Authority" | 
+  corporate_finance_measure$Country == "Philippines" |  
+  corporate_finance_measure$Country == "Romania" |  
+  corporate_finance_measure$Country == "Serbia" |  
+  corporate_finance_measure$Country == "Sri Lanka" |  
+  corporate_finance_measure$Country == "Tunisia" |  
+  corporate_finance_measure$Country == "Costa Rica" |  
+  corporate_finance_measure$Country == "Chile" |  
+  corporate_finance_measure$Country == "Egypt" |  
+  corporate_finance_measure$Country == "Jamaica" |
+  corporate_finance_measure$Country == "Mexico" |
+  corporate_finance_measure$Country == "Panama" |
+  corporate_finance_measure$Country == "Russia" |
+  corporate_finance_measure$Country == "Thailand" | 
+  corporate_finance_measure$Country == "Turkey"] <- 4
+        
+corporate_finance_measure$Economic_development_level[corporate_finance_measure$Country == "India" | # Assigning level of economic development = 3
+  corporate_finance_measure$Country == "Togo" |
+  corporate_finance_measure$Country == "Uganda" |
+  corporate_finance_measure$Country == "Bangladesh" |
+  corporate_finance_measure$Country == "Senegal" |
+  corporate_finance_measure$Country == "Laos" |
+  corporate_finance_measure$Country == "Cambodia" |
+  corporate_finance_measure$Country == "Ghana" |
+  corporate_finance_measure$Country == "Vietnam" |
+  corporate_finance_measure$Country == "Kenya"] <- 3 
+
+corporate_finance_measure$Economic_development_level[corporate_finance_measure$Country == "Zimbabwe" | # Assigning level of economic development = 2
+  corporate_finance_measure$Country == "Botswana" |
+  corporate_finance_measure$Country == "Namibia" |
+  corporate_finance_measure$Country == "South Africa" |
+  corporate_finance_measure$Country == "Zambia"] <- 2   
+
+corporate_finance_measure$Economic_development_level[corporate_finance_measure$Country == "Burkina Faso" | # Assigning level of economic development = 1
+  corporate_finance_measure$Country == "Ivory Coast" |
+  corporate_finance_measure$Country == "Mauritius" |
+  corporate_finance_measure$Country == "Nigeria" |
+  corporate_finance_measure$Country == "Cameroon" |
+  corporate_finance_measure$Country == "Gabon" |
+  corporate_finance_measure$Country == "Sierra Leone"] <- 1   
+
+corporate_finance_measure$Economic_development_level <- as.numeric(as.character(corporate_finance_measure$Economic_development_level)) # Convert to numeric
+
+```
+
+# Exploratory Data Analysis
+
+## Basics statistics
+
+```{r}
+pacman::p_load( # Load package
+  skimr  
+)
+
+skimr::skim(corporate_finance_measure) # Print table
+
+```
+
+## Missing values
+
+```{r warning = FALSE, message = FALSE}
+
+pacman::p_load( # Load packages
+  naniar,
+  ggplot2,
+  DataExplorer,
+  tidyverse,
+  VIM
+)
+
+profile_missing(corporate_finance_measure) # table
+
+gg_miss_var(corporate_finance_measure) +
+            labs(title = "Missing values by variable")
+
+gg_miss_var(corporate_finance_measure, # plot in %
+            show_pct = TRUE) + 
+            ylim(0, 100) +
+            labs(title = "Missing values by variable (in %)")
+
+
+```
+
+## Univariate Distributions
+
+### Bar Charts by Economic developpement
+
+```{r}
+pacman::p_load(
+  highcharter
+)
+
+distinct_country <- corporate_finance_measure[match(unique(corporate_finance_measure$Country), corporate_finance_measure$Country), - c(1,3:18)] # Remove duplicate in Column "Country" & remove all columns except "Country" & "Economic_development_level"
+
+distinct_country %>% # Bar chart - Group_by Economic_development_level
+  count(Economic_development_level)%>%
+  arrange(n)%>%
+  hchart(type = "bar", hcaes(x = Economic_development_level, y = n)) %>%
+  hc_title(
+    text = "Histogram of Economic developpement level",
+    margin = 20,
+    align = "center"
+  )  %>%
+hc_subtitle(
+  text = "Countries grouped by Economic developpement level",
+  align = "center"
+) 
+
+distinct_country %>% # Bar chart - Individual  (descending order)
+  arrange(desc(distinct_country$Economic_development_level, - distinct_country$Country)) %>% 
+  hchart(type = 'bar', hcaes(x = Country, y = Economic_development_level)) %>%
+  hc_title(
+    text = "Histogram of Economic developpement level",
+    margin = 20,
+    align = "center"
+  ) %>%
+hc_subtitle(
+  text = "Descending order",
+  align = "center"
+) 
+
+```
+
+### Histograms
+
+```{r}
+pacman::p_load(
+  tidyverse,      # includes ggplot2 and other data management tools
+  rio,            # import/export
+  here,           # file locator
+  stringr,         # working with characters   
+  data.table
+)
+
+plot_histogram(corporate_finance_measure) # collective
+
+```
+
+### QQ plots
+
+```{r warning = FALSE, message = FALSE}
+pacman::p_load(
+  ggpubr
+)
+
+plot_qq(corporate_finance_measure, sampled_rows = 1000L) # QQ plot
+
+```
+
+<br> *Note*: Thanks to histograms and QQ plots, we can observe outliers on the right queue of the distribution for many variables. Consequently, in a next section, we process correcting them using a quantile-based flooring and capping method.
+
+### Correlation Heatmap
+
+```{r warning = FALSE, message = FALSE}
+corporate_finance_measure_without_year_country_level <- corporate_finance_measure[,-c(1:2)] # Removing date & country
+
+hchart(cor(na.omit(corporate_finance_measure_without_year_country_level))) # correlation heatmap
+
+```
+
+### Box plots
+
+```{r warning = FALSE, message = FALSE}
+
+plot_boxplot(corporate_finance_measure, by = "Year", title = "Box plot - Data grouped by Year")
+# Box plot by Year
+
+```
+
+### Line plots on key variables {.tabset}
+
+```{r include = FALSE, echo=FALSE, warning = FALSE, message = FALSE}
+
+Year <- lubridate::ymd(corporate_finance_measure$Year, truncated = 2L) # convert numeric to date
+corporate_finance_measure_date <- corporate_finance_measure # copy of principal dataframe
+corporate_finance_measure_date$Year <- Year # remplacement  of the converted column
+rm(Year) # removing of column created
+str(corporate_finance_measure_date) # check format column 
+corporate_finance_measure_date <- corporate_finance_measure_date[with(corporate_finance_measure_date, order(Year, Country)), ] # re-ordering data
+
+```
+
+#### Market capitalization
+
+```{r warning = FALSE, message = FALSE}
+
+hchart( # Market cap
+  corporate_finance_measure_date, "line", 
+  hcaes(x = Year, y = `Sum of Market Cap (in US $)`, group = Country)
+)
+
+```
+
+#### Price-earnings ratio
+
+```{r warning = FALSE, message = FALSE}
+
+hchart( # PER
+  corporate_finance_measure_date, "line", 
+  hcaes(x = Year, y = `Average of Current PE`, group = Country)
+)
+
+
+```
+
+#### Price-to-Book Value
+
+```{r warning = FALSE, message = FALSE}
+
+hchart( # PBV
+  corporate_finance_measure_date, "line", 
+  hcaes(x = Year, y = `Average of PBV`, group = Country)
+)
+
+```
+
+#### Price-to-Sales
+
+```{r warning = FALSE, message = FALSE}
+
+hchart( # PS
+  corporate_finance_measure_date, "line", 
+  hcaes(x = Year, y = `Average of PS`, group = Country)
+)
+
+```
+
+#### EV/EBITDA
+
+```{r warning = FALSE, message = FALSE}
+
+hchart( # Average_of_EV/EBITDA
+  corporate_finance_measure_date, "line", 
+  hcaes(x = Year, y = `Average of EV/EBITDA`, group = Country)
+)
+
+```
+
+## Treatment of extreme outliers {.tabset}
+
+As saw in univariate distributions, there are extreme outliers in dataset, more precisely on variable in percentage.
+
+In this section, we propose a new dataframe corrected for extreme outliers.
+
+**Disclaimers:**
+
+-   Correcting / removing extreme outliers is a delicate process from a scientifical point of vue. However, where a value is theorically impossible - or pratically impossible, the question about its removing / replacing must be asked.\
+-   Among the different processes to the treatment of outliers, we select the replacement of extreme values by upper & lower bounds, defining by a x% percentile.
+-   To due asymmetric outliers, we select a upper bounds greater than the lower bound. More precisely, we select the 0.5% percentile and 98,5% percentile for each variable.
+
+### PER
+
+```{r warning = FALSE, message = FALSE}
+
+corporate_finance_measure_outliers_corrected <- corporate_finance_measure # Duplicate of original dataframe
+
+pct_Average_of_Current_PE <- quantile(na.omit(corporate_finance_measure_outliers_corrected$`Average of Current PE`), c(0.005, 0.985), type = 1) # Define the value of 0,5% & 98,5% percentile
+
+corporate_finance_measure_outliers_corrected$`Average of Current PE` <- replace(corporate_finance_measure_outliers_corrected$`Average of Current PE`, corporate_finance_measure_outliers_corrected$`Average of Current PE`  <= pct_Average_of_Current_PE[1], pct_Average_of_Current_PE[1]) # Replace value to 0.5% percentile if value is less than the 0.5% percentile
+
+corporate_finance_measure_outliers_corrected$`Average of Current PE` <- replace(corporate_finance_measure_outliers_corrected$`Average of Current PE`, corporate_finance_measure_outliers_corrected$`Average of Current PE`  >= pct_Average_of_Current_PE[2], pct_Average_of_Current_PE[2]) # Replace value to 98.5% percentile if value is greater than the 98.5% percentile
+
+boxplot(corporate_finance_measure$`Average of Current PE`, 
+        main="Data Before Treatment Outliers",
+        ylab="Price-earnings ratio") # Box plot before correcting
+
+boxplot(corporate_finance_measure_outliers_corrected$`Average of Current PE`, 
+        main="Data After Treatment Outliers",
+        ylab="Price-earnings ratio") # Box plot after correcting
+
+```
+
+### PEG
+
+```{r warning = FALSE, message = FALSE}
+
+pct_Average_of_PEG <- quantile(na.omit(corporate_finance_measure_outliers_corrected$`Average of PEG`), c(0.005, 0.985), type = 1) # Define the value of 0,5% & 99,5% percentile
+
+corporate_finance_measure_outliers_corrected$`Average of PEG` <- replace(corporate_finance_measure_outliers_corrected$`Average of PEG`, corporate_finance_measure_outliers_corrected$`Average of PEG`  <= pct_Average_of_PEG[1], pct_Average_of_PEG[1]) # Replace value to 0,5% percentile if value is less than the 0,5% percentile
+corporate_finance_measure_outliers_corrected$`Average of PEG` <- replace(corporate_finance_measure_outliers_corrected$`Average of PEG`, corporate_finance_measure_outliers_corrected$`Average of PEG`  >= pct_Average_of_PEG[2], pct_Average_of_PEG[2]) # Replace value to 98,5% percentile if value is greater than the 98% percentile
+
+boxplot(corporate_finance_measure$`Average of PEG`, 
+        main="Data Before Treatment Outliers",
+        ylab="Price-earnings to Growth") # Box plot before correcting
+
+boxplot(corporate_finance_measure_outliers_corrected$`Average of PEG`, 
+        main="Data After Treatment Outliers",
+        ylab="Price-earnings to Growth") # Box plot after correcting
+
+```
+
+### Price-to-Book Value
+
+```{r warning = FALSE, message = FALSE}
+
+pct_Average_of_PBV <- quantile(na.omit(corporate_finance_measure_outliers_corrected$`Average of PBV`), c(0.005, 0.985), type = 1) # Define the value of 0,5% & 99,5% percentile
+
+corporate_finance_measure_outliers_corrected$`Average of PBV` <- replace(corporate_finance_measure_outliers_corrected$`Average of PBV`, corporate_finance_measure_outliers_corrected$`Average of PBV`  <= pct_Average_of_PBV[1], pct_Average_of_PBV[1]) # Replace value to 0,5% percentile if value is less than the 0,5% percentile
+corporate_finance_measure_outliers_corrected$`Average of PBV` <- replace(corporate_finance_measure_outliers_corrected$`Average of PBV`, corporate_finance_measure_outliers_corrected$`Average of PBV`  >= pct_Average_of_PBV[2], pct_Average_of_PBV[2]) # Replace value to 98% percentile if value is greater than the 99,5% percentile
+
+boxplot(corporate_finance_measure$`Average of PBV`, 
+        main="Data Before Treatment Outliers",
+        ylab="Price-to-Book value") # Box plot before correcting
+
+boxplot(corporate_finance_measure_outliers_corrected$`Average of PBV`, 
+        main="Data After Treatment Outliers",
+        ylab="Price-to-Book value") # Box plot after correcting
+
+
+```
+
+### Price-to-Sales
+
+```{r warning = FALSE, message = FALSE}
+
+pct_Average_of_PS <- quantile(na.omit(corporate_finance_measure_outliers_corrected$`Average of PS`), c(0.005, 0.985), type = 1) # Define the value of 0,5% & 99,5% percentile
+
+corporate_finance_measure_outliers_corrected$`Average of PS` <- replace(corporate_finance_measure_outliers_corrected$`Average of PS`, corporate_finance_measure_outliers_corrected$`Average of PS`  <= pct_Average_of_PS[1], pct_Average_of_PS[1]) # Replace value to 0,5% percentile if value is less than the 0,5% percentile
+corporate_finance_measure_outliers_corrected$`Average of PS` <- replace(corporate_finance_measure_outliers_corrected$`Average of PS`, corporate_finance_measure_outliers_corrected$`Average of PS`  >= pct_Average_of_PS[2], pct_Average_of_PS[2]) # Replace value to 98% percentile if value is greater than the 99,5% percentile
+
+boxplot(corporate_finance_measure$`Average of PS`, 
+        main="Data Before Treatment Outliers",
+        ylab="Price-to-Sales") # Box plot before correcting
+
+boxplot(corporate_finance_measure_outliers_corrected$`Average of PS`, 
+        main="Data After Treatment Outliers",
+        ylab="Price-to-Sales") # Box plot after correcting
+
+```
+
+### EV/EBIT
+
+```{r warning = FALSE, message = FALSE}
+
+`pct_Average_of_EV/EBIT` <- quantile(na.omit(corporate_finance_measure_outliers_corrected$`Average of EV/EBIT`), c(0.005, 0.985), type = 1) # Define the value of 0,5% & 99,5% percentile
+
+corporate_finance_measure_outliers_corrected$`Average of EV/EBIT`  <- replace(corporate_finance_measure_outliers_corrected$`Average of EV/EBIT`, corporate_finance_measure_outliers_corrected$`Average of EV/EBIT` <= `pct_Average_of_EV/EBIT` [1], `pct_Average_of_EV/EBIT` [1]) # Replace value to 0,5% percentile if value is less than the 0,5% percentile
+corporate_finance_measure_outliers_corrected$`Average of EV/EBIT`  <- replace(corporate_finance_measure_outliers_corrected$`Average of EV/EBIT`, corporate_finance_measure_outliers_corrected$`Average of EV/EBIT` >= `pct_Average_of_EV/EBIT` [2], `pct_Average_of_EV/EBIT` [2]) # Replace value to 98,5% percentile if value is greater than the 98% percentile
+
+boxplot(corporate_finance_measure$`Average of EV/EBIT`, 
+        main="Data Before Treatment Outliers",
+        ylab= "EV/EBIT") # Box plot before correcting
+
+boxplot(corporate_finance_measure_outliers_corrected$`Average of EV/EBIT`, 
+        main="Data After Treatment Outliers",
+        ylab="EV/EBIT") # Box plot after correcting
+
+```
+
+### EV/EBITDA
+
+```{r warning = FALSE, message = FALSE}
+
+`pct_Average_of_EV/EBITDA` <- quantile(na.omit(corporate_finance_measure_outliers_corrected$`Average of EV/EBITDA`), c(0.005, 0.985), type = 1) # Define the value of 0,5% & 99,5% percentile
+
+corporate_finance_measure_outliers_corrected$`Average of EV/EBITDA`  <- replace(corporate_finance_measure_outliers_corrected$`Average of EV/EBITDA`, corporate_finance_measure_outliers_corrected$`Average of EV/EBITDA` <= `pct_Average_of_EV/EBITDA` [1], `pct_Average_of_EV/EBITDA` [1]) # Replace value to 0,5% percentile if value is less than the 0,5% percentile
+corporate_finance_measure_outliers_corrected$`Average of EV/EBITDA`  <- replace(corporate_finance_measure_outliers_corrected$`Average of EV/EBITDA`, corporate_finance_measure_outliers_corrected$`Average of EV/EBITDA` >= `pct_Average_of_EV/EBITDA` [2], `pct_Average_of_EV/EBITDA` [2]) # Replace value to 98,5% percentile if value is greater than the 98% percentile
+
+boxplot(corporate_finance_measure$`Average of EV/EBITDA`, 
+        main="Data Before Treatment Outliers",
+        ylab= "EV/EBITDA") # Box plot before correcting
+
+boxplot(corporate_finance_measure_outliers_corrected$`Average of EV/EBITDA`, 
+        main="Data After Treatment Outliers",
+        ylab="EV/EBITDA") # Box plot after correcting
+
+```
+
+### EV/Sales
+
+```{r warning = FALSE, message = FALSE}
+
+`pct_Average_of_EV/Sales`  <- quantile(na.omit(corporate_finance_measure_outliers_corrected$`Average of EV/Sales`), c(0.005, 0.985), type = 1) # Define the value of 0,5% & 99,5% percentile
+
+corporate_finance_measure_outliers_corrected$`Average of EV/Sales`  <- replace(corporate_finance_measure_outliers_corrected$`Average of EV/Sales`, corporate_finance_measure_outliers_corrected$`Average of EV/Sales`  <= `pct_Average_of_EV/Sales` [1], `pct_Average_of_EV/Sales` [1]) # Replace value to 0,5% percentile if value is less than the 0,5% percentile
+corporate_finance_measure_outliers_corrected$`Average of EV/Sales`  <- replace(corporate_finance_measure_outliers_corrected$`Average of EV/Sales`, corporate_finance_measure_outliers_corrected$`Average of EV/Sales`  >= `pct_Average_of_EV/Sales` [2], `pct_Average_of_EV/Sales` [2]) # Replace value to 98% percentile if value is greater than the 98% percentile
+
+boxplot(corporate_finance_measure$`Average of EV/Sales`, 
+        main="Data Before Treatment Outliers",
+        ylab= "EV/Sales") # Box plot before correcting
+
+boxplot(corporate_finance_measure_outliers_corrected$`Average of EV/Sales`, 
+        main="Data After Treatment Outliers",
+        ylab="EV/Sales") # Box plot after correcting
+
+```
+
+### Dividend yield
+
+```{r warning = FALSE, message = FALSE}
+
+`pct_Average_of_Dividend_Yield_(in_%)`  <- quantile(na.omit(corporate_finance_measure_outliers_corrected$`Average of Dividend Yield (in %)`), c(0.005, 0.985), type = 1) # Define the value of 0,5% & 99,5% percentile
+
+corporate_finance_measure_outliers_corrected$`Average of Dividend Yield (in %)`  <- replace(corporate_finance_measure_outliers_corrected$`Average of Dividend Yield (in %)`, corporate_finance_measure_outliers_corrected$`Average of Dividend Yield (in %)`  <= `pct_Average_of_Dividend_Yield_(in_%)` [1], `pct_Average_of_Dividend_Yield_(in_%)` [1]) # Replace value to 0,5% percentile if value is less than the 0,5% percentile
+corporate_finance_measure_outliers_corrected$`Average of Dividend Yield (in %)`  <- replace(corporate_finance_measure_outliers_corrected$`Average of Dividend Yield (in %)`, corporate_finance_measure_outliers_corrected$`Average of Dividend Yield (in %)`  >= `pct_Average_of_Dividend_Yield_(in_%)` [2], `pct_Average_of_Dividend_Yield_(in_%)` [2]) # Replace value to 98% percentile if value is greater than the 98% percentile
+
+boxplot(corporate_finance_measure$`Average of Dividend Yield (in %)`, 
+        main="Data Before Treatment Outliers",
+        ylab= "Dividend yield") # Box plot before correcting
+
+boxplot(corporate_finance_measure_outliers_corrected$`Average of Dividend Yield (in %)`, 
+        main="Data After Treatment Outliers",
+        ylab="Dividend yield") # Box plot after correcting
+
+```
+
+### Historical growth in Revenues Last 5 years
+
+```{r warning = FALSE, message = FALSE, cache=FALSE}
+
+`pct_Average_of_Historical_growth_in_Revenues_Last_5_years_(in_%)`  <- quantile(na.omit(corporate_finance_measure_outliers_corrected$`Average of Historical growth in Revenues - Last 5 years (in %)`), c(0.005, 0.985), type = 1) # Define the value of 0,5% & 99,5% percentile
+
+corporate_finance_measure_outliers_corrected$`Average of Historical growth in Revenues - Last 5 years (in %)`  <- replace(corporate_finance_measure_outliers_corrected$`Average of Historical growth in Revenues - Last 5 years (in %)`, corporate_finance_measure_outliers_corrected$`Average of Historical growth in Revenues - Last 5 years (in %)`  <= `pct_Average_of_Historical_growth_in_Revenues_Last_5_years_(in_%)` [1], `pct_Average_of_Historical_growth_in_Revenues_Last_5_years_(in_%)` [1]) # Replace value to 0,5% percentile if value is less than the 0,5% percentile
+corporate_finance_measure_outliers_corrected$`Average of Historical growth in Revenues - Last 5 years (in %)`  <- replace(corporate_finance_measure_outliers_corrected$`Average of Historical growth in Revenues - Last 5 years (in %)`, corporate_finance_measure_outliers_corrected$`Average of Historical growth in Revenues - Last 5 years (in %)`  >= `pct_Average_of_Historical_growth_in_Revenues_Last_5_years_(in_%)` [2], `pct_Average_of_Historical_growth_in_Revenues_Last_5_years_(in_%)` [2]) # Replace value to 98,5% percentile if value is greater than the 98% percentile
+
+boxplot(corporate_finance_measure$`Average of Historical growth in Revenues - Last 5 years (in %)`, 
+        main="Data Before Treatment Outliers",
+        ylab= "Historical growth in Revenues Last 5 years") # Box plot before correcting
+
+boxplot(corporate_finance_measure_outliers_corrected$`Average of Historical growth in Revenues - Last 5 years (in %)`, 
+        main="Data After Treatment Outliers",
+        ylab="Historical growth in Revenues Last 5 years") # Box plot after correcting
+
+```
+
+# Insights
+
+In this section dedicated to insights, we decide to focus on 4 keys variables for value investing : PER, PBV, EV/EBITDA, EV/Sales.
+
+*Note:* We work with dataframe corrected of extreme outliers
+
+## Ranking of countries on keys variables for value investing {.tabset}
+
+### Price earning ratio
+
+```{r}
+
+pacman::p_load( # Load packages
+  tidyverse, 
+  dplyr,
+  tidyverse,
+  data.table
+)
+
+# Step 1: Extracting PER for each year 
+
+PER_2013 <- subset(corporate_finance_measure_outliers_corrected,Year == '2013'| is.na(`Average of Current PE`), 
+                   select = c('Country','Average of Current PE'))
+PER_2014 <- subset(corporate_finance_measure_outliers_corrected,Year == '2014'| is.na(`Average of Current PE`), 
+                   select = c('Country','Average of Current PE'))
+PER_2015 <- subset(corporate_finance_measure_outliers_corrected,Year == '2015'| is.na(`Average of Current PE`), 
+                   select = c('Country','Average of Current PE'))
+PER_2016 <- subset(corporate_finance_measure_outliers_corrected,Year == '2016'| is.na(`Average of Current PE`), 
+                   select = c('Country','Average of Current PE'))
+PER_2017 <- subset(corporate_finance_measure_outliers_corrected,Year == '2017'| is.na(`Average of Current PE`), 
+                   select = c('Country','Average of Current PE'))
+PER_2018 <- subset(corporate_finance_measure_outliers_corrected,Year == '2018'| is.na(`Average of Current PE`), 
+                   select = c('Country','Average of Current PE'))
+PER_2019 <- subset(corporate_finance_measure_outliers_corrected,Year == '2019'| is.na(`Average of Current PE`), 
+                   select = c('Country','Average of Current PE'))
+PER_2020 <- subset(corporate_finance_measure_outliers_corrected,Year == '2020'| is.na(`Average of Current PE`), 
+                   select = c('Country','Average of Current PE'))
+
+# Step 2: Merging PER data frames 
+
+# merge PER_2013 & PER_2014
+
+PER <- merge(PER_2013,PER_2014,by="Country") # Merge
+colnames(PER)[2:3] <- c("2013","2014") # change column name for new columns
+
+coalesce_by_column <- function(PER) { # Function to combine rows (recurring operation to reduce time-consuming)
+  return(dplyr::coalesce(!!! as.list(PER)))
+}
+
+PER <- PER %>% # Eliminating of duplicate rows (recurring operation to reduce time-consuming)
+  group_by(Country) %>%
+  summarise_all(coalesce_by_column)
+
+# merge PER & PER_2015
+
+PER <- merge(PER,PER_2015,by="Country") # Merge
+colnames(PER)[4] <- c("2015") # change column name 
+
+coalesce_by_column <- function(PER) { # Function to combine rows (recurring operation to reduce time-consuming)
+  return(dplyr::coalesce(!!! as.list(PER)))
+}
+
+PER <- PER %>% # Eliminating of duplicate rows (recurring operation to reduce time-consuming)
+  group_by(Country) %>%
+  summarise_all(coalesce_by_column)
+
+# merge PER & PER_2016
+
+PER <- merge(PER,PER_2016,by="Country") # Merge
+colnames(PER)[5] <- c("2016") # change column name 
+
+coalesce_by_column <- function(PER) { # Function to combine rows (recurring operation to reduce time-consuming)
+  return(dplyr::coalesce(!!! as.list(PER)))
+}
+
+PER <- PER %>% # Eliminating of duplicate rows (recurring operation to reduce time-consuming)
+  group_by(Country) %>%
+  summarise_all(coalesce_by_column)
+
+# merge PER & PER_2017
+
+PER <- merge(PER,PER_2017,by="Country", all = TRUE, allow.cartesian=TRUE) # Merge
+colnames(PER)[6] <- c("2017") # change column name 
+
+coalesce_by_column <- function(PER) { # Function to combine rows (recurring operation to reduce time-consuming)
+  return(dplyr::coalesce(!!! as.list(PER)))
+}
+
+PER <- PER %>% # Eliminating of duplicate rows (recurring operation to reduce time-consuming)
+  group_by(Country) %>%
+  summarise_all(coalesce_by_column)
+
+# merge PER & PER_2018
+
+PER <- merge(PER,PER_2018,by="Country") # Merge
+colnames(PER)[7] <- c("2018") # change column name 
+
+coalesce_by_column <- function(PER) { # Function to combine rows (recurring operation to reduce time-consuming)
+  return(dplyr::coalesce(!!! as.list(PER)))
+}
+
+PER <- PER %>% # Eliminating of duplicate rows (recurring operation to reduce time-consuming)
+  group_by(Country) %>%
+  summarise_all(coalesce_by_column)
+
+# merge PER PER_2019
+
+PER <- merge(PER,PER_2019,by="Country") # Merge
+colnames(PER)[8] <- c("2019") # change column name
+
+coalesce_by_column <- function(PER) { # Function to combine rows (recurring operation to reduce time-consuming)
+  return(dplyr::coalesce(!!! as.list(PER)))
+}
+
+PER <- PER %>% # Eliminating of duplicate rows (recurring operation to reduce time-consuming)
+  group_by(Country) %>%
+  summarise_all(coalesce_by_column)
+
+# merge PER & PER_2020
+
+PER <- merge(PER,PER_2020,by="Country") # Merge
+colnames(PER)[9] <- c("2020") # change column name 
+
+coalesce_by_column <- function(PER) { # Function to combine rows (recurring operation to reduce time-consuming)
+  return(dplyr::coalesce(!!! as.list(PER)))
+}
+
+PER <- PER %>% # Eliminating of duplicate rows (recurring operation to reduce time-consuming)
+  group_by(Country) %>%
+  summarise_all(coalesce_by_column)
+
+# Step 3: Rename the rows with the country name 
+
+PER <- PER %>% 
+  column_to_rownames(var="Country")
+
+# Step 4: Add mean of PER in the new dataframe
+
+PER$Mean <- apply(PER[,1:8],1,mean,na.rm=TRUE) # Add, as last column, the mean of the observation period for each country 
+
+PER <- round(PER,2) # Rounding value
+
+# Step 5: Make a ranking  
+
+pacman::p_load( # Load package
+  DT
+)
+
+datatable(PER) %>% # table with conditional formatting (range: -10, 7, 12.5, 17.5, 25, 50)
+  formatStyle(
+    names(PER),
+    backgroundColor = styleInterval(
+      cuts = c(-10, 7, 12.5, 17.5, 25, 50), 
+      values = c('#FFFFFF', '#FFF4F4', '#FFE8E8', '#FFD2D2', '#FFBBBB', '#FF9999', '#FF7777')
+    )
+  ) %>%
+  formatStyle(
+    names(PER),
+    backgroundColor = styleEqual(0, "white")
+  )
+
+```
+
+*Note:* Despite each sector has its own range, according to litterature, we can consider that a stock with PER \< 12.5 is underevaluated and a stock with PER \> 25 overevaluated.
+
+### Price-to-Book Value
+
+```{r}
+
+# Step 1: Extracting PBV for each year 
+
+PBV_2013 <- subset(corporate_finance_measure_outliers_corrected,Year == '2013'| is.na(`Average of PBV`), 
+                   select = c('Country','Average of PBV'))
+PBV_2014 <- subset(corporate_finance_measure_outliers_corrected,Year == '2014'| is.na(`Average of PBV`), 
+                   select = c('Country','Average of PBV'))
+PBV_2015 <- subset(corporate_finance_measure_outliers_corrected,Year == '2015'| is.na(`Average of PBV`), 
+                   select = c('Country','Average of PBV'))
+PBV_2016 <- subset(corporate_finance_measure_outliers_corrected,Year == '2016'| is.na(`Average of PBV`), 
+                   select = c('Country','Average of PBV'))
+PBV_2017 <- subset(corporate_finance_measure_outliers_corrected,Year == '2017'| is.na(`Average of PBV`), 
+                   select = c('Country','Average of PBV'))
+PBV_2018 <- subset(corporate_finance_measure_outliers_corrected,Year == '2018'| is.na(`Average of PBV`), 
+                   select = c('Country','Average of PBV'))
+PBV_2019 <- subset(corporate_finance_measure_outliers_corrected,Year == '2019'| is.na(`Average of PBV`), 
+                   select = c('Country','Average of PBV'))
+PBV_2020 <- subset(corporate_finance_measure_outliers_corrected,Year == '2020'| is.na(`Average of PBV`), 
+                   select = c('Country','Average of PBV'))
+
+# Step 2: Merging PBV data frames 
+
+# merge PBV_2013 & PBV_2014
+
+PBV <- merge(PBV_2013,PBV_2014,by="Country") # Merge
+colnames(PBV)[2:3] <- c("2013","2014") # change column name for new columns
+
+coalesce_by_column <- function(PBV) { # Function to combine rows (recurring operation to reduce time-consuming)
+  return(dplyr::coalesce(!!! as.list(PBV)))
+}
+
+PBV <- PBV %>% # Eliminating of duplicate rows (recurring operation to reduce time-consuming)
+  group_by(Country) %>%
+  summarise_all(coalesce_by_column)
+
+# merge PBV & PBV_2015
+
+PBV <- merge(PBV,PBV_2015,by="Country") # Merge
+colnames(PBV)[4] <- c("2015") # change column name 
+
+coalesce_by_column <- function(PBV) { # Function to combine rows (recurring operation to reduce time-consuming)
+  return(dplyr::coalesce(!!! as.list(PBV)))
+}
+
+PBV <- PBV %>% # Eliminating of duplicate rows (recurring operation to reduce time-consuming)
+  group_by(Country) %>%
+  summarise_all(coalesce_by_column)
+
+# merge PBV & PBV_2016
+
+PBV <- merge(PBV,PBV_2016,by="Country") # Merge
+colnames(PBV)[5] <- c("2016") # change column name 
+
+coalesce_by_column <- function(PBV) { # Function to combine rows (recurring operation to reduce time-consuming)
+  return(dplyr::coalesce(!!! as.list(PBV)))
+}
+
+PBV <- PBV %>% # Eliminating of duplicate rows (recurring operation to reduce time-consuming)
+  group_by(Country) %>%
+  summarise_all(coalesce_by_column)
+
+# merge PBV & PBV_2017
+
+PBV <- merge(PBV,PBV_2017,by="Country", all = TRUE, allow.cartesian=TRUE) # Merge
+colnames(PBV)[6] <- c("2017") # change column name 
+
+coalesce_by_column <- function(PBV) { # Function to combine rows (recurring operation to reduce time-consuming)
+  return(dplyr::coalesce(!!! as.list(PBV)))
+}
+
+PBV <- PBV %>% # Eliminating of duplicate rows (recurring operation to reduce time-consuming)
+  group_by(Country) %>%
+  summarise_all(coalesce_by_column)
+
+# merge PBV & PBV_2018
+
+PBV <- merge(PBV,PBV_2018,by="Country") # Merge
+colnames(PBV)[7] <- c("2018") # change column name 
+
+coalesce_by_column <- function(PBV) { # Function to combine rows (recurring operation to reduce time-consuming)
+  return(dplyr::coalesce(!!! as.list(PBV)))
+}
+
+PBV <- PBV %>% # Eliminating of duplicate rows (recurring operation to reduce time-consuming)
+  group_by(Country) %>%
+  summarise_all(coalesce_by_column)
+
+# merge PBV PBV_2019
+
+PBV <- merge(PBV,PBV_2019,by="Country") # Merge
+colnames(PBV)[8] <- c("2019") # change column name
+
+coalesce_by_column <- function(PBV) { # Function to combine rows (recurring operation to reduce time-consuming)
+  return(dplyr::coalesce(!!! as.list(PBV)))
+}
+
+PBV <- PBV %>% # Eliminating of duplicate rows (recurring operation to reduce time-consuming)
+  group_by(Country) %>%
+  summarise_all(coalesce_by_column)
+
+# merge PBV & PBV_2020
+
+PBV <- merge(PBV,PBV_2020,by="Country") # Merge
+colnames(PBV)[9] <- c("2020") # change column name 
+
+coalesce_by_column <- function(PBV) { # Function to combine rows (recurring operation to reduce time-consuming)
+  return(dplyr::coalesce(!!! as.list(PBV)))
+}
+
+PBV <- PBV %>% # Eliminating of duplicate rows (recurring operation to reduce time-consuming)
+  group_by(Country) %>%
+  summarise_all(coalesce_by_column)
+
+# Step 3: Rename the rows with the country name 
+
+PBV <- PBV %>% 
+  column_to_rownames(var="Country")
+
+# Step 4: Add mean of PBV in the new dataframe
+
+PBV$Mean <- apply(PBV[,1:8],1,mean,na.rm=TRUE) # Add, as last column, the mean of the observation PBViod for each country 
+
+PBV <- round(PBV,2) # Rounding value
+
+# Step 5: Make a ranking  
+
+pacman::p_load( # Load package
+  DT
+)
+
+datatable(PBV) %>% # table with conditional formatting (range:  -10, 7, 12.5, 17.5, 25, 50)
+  formatStyle(
+    names(PBV),
+    backgroundColor = styleInterval(
+      cuts = c(1, 1.5, 2, 3, 5, 50), 
+      values = c('#FFFFFF', '#FFF4F4', '#FFE8E8', '#FFD2D2', '#FFBBBB', '#FF9999', '#FF7777')
+    )
+  ) %>%
+  formatStyle(
+    names(PBV),
+    backgroundColor = styleEqual(0, "white")
+  )
+
+```
+
+*Note:* Despite each sector has its own range, according to litterature, we can consider that a stock with PBV \< 1 is underevaluated and a stock with PBV \> 2.5 overevaluated.
+
+### EV/EBITDA
+
+```{r}
+
+# Step 1: Extracting EV_ON_EBITDA for each year 
+
+EV_ON_EBITDA_2013 <- subset(corporate_finance_measure_outliers_corrected,Year == '2013'| is.na(`Average of EV/EBITDA`), 
+                   select = c('Country','Average of EV/EBITDA'))
+EV_ON_EBITDA_2014 <- subset(corporate_finance_measure_outliers_corrected,Year == '2014'| is.na(`Average of EV/EBITDA`), 
+                   select = c('Country','Average of EV/EBITDA'))
+EV_ON_EBITDA_2015 <- subset(corporate_finance_measure_outliers_corrected,Year == '2015'| is.na(`Average of EV/EBITDA`), 
+                   select = c('Country','Average of EV/EBITDA'))
+EV_ON_EBITDA_2016 <- subset(corporate_finance_measure_outliers_corrected,Year == '2016'| is.na(`Average of EV/EBITDA`), 
+                   select = c('Country','Average of EV/EBITDA'))
+EV_ON_EBITDA_2017 <- subset(corporate_finance_measure_outliers_corrected,Year == '2017'| is.na(`Average of EV/EBITDA`), 
+                   select = c('Country','Average of EV/EBITDA'))
+EV_ON_EBITDA_2018 <- subset(corporate_finance_measure_outliers_corrected,Year == '2018'| is.na(`Average of EV/EBITDA`), 
+                   select = c('Country','Average of EV/EBITDA'))
+EV_ON_EBITDA_2019 <- subset(corporate_finance_measure_outliers_corrected,Year == '2019'| is.na(`Average of EV/EBITDA`), 
+                   select = c('Country','Average of EV/EBITDA'))
+EV_ON_EBITDA_2020 <- subset(corporate_finance_measure_outliers_corrected,Year == '2020'| is.na(`Average of EV/EBITDA`), 
+                   select = c('Country','Average of EV/EBITDA'))
+
+# Step 2: Merging EV_ON_EBITDA data frames 
+
+# merge EV_ON_EBITDA_2013 & EV_ON_EBITDA_2014
+
+EV_ON_EBITDA <- merge(EV_ON_EBITDA_2013,EV_ON_EBITDA_2014,by="Country") # Merge
+colnames(EV_ON_EBITDA)[2:3] <- c("2013","2014") # change column name for new columns
+
+coalesce_by_column <- function(EV_ON_EBITDA) { # Function to combine rows (recurring operation to reduce time-consuming)
+  return(dplyr::coalesce(!!! as.list(EV_ON_EBITDA)))
+}
+
+EV_ON_EBITDA <- EV_ON_EBITDA %>% # Eliminating of duplicate rows (recurring operation to reduce time-consuming)
+  group_by(Country) %>%
+  summarise_all(coalesce_by_column)
+
+# merge EV_ON_EBITDA & EV_ON_EBITDA_2015
+
+EV_ON_EBITDA <- merge(EV_ON_EBITDA,EV_ON_EBITDA_2015,by="Country") # Merge
+colnames(EV_ON_EBITDA)[4] <- c("2015") # change column name 
+
+coalesce_by_column <- function(EV_ON_EBITDA) { # Function to combine rows (recurring operation to reduce time-consuming)
+  return(dplyr::coalesce(!!! as.list(EV_ON_EBITDA)))
+}
+
+EV_ON_EBITDA <- EV_ON_EBITDA %>% # Eliminating of duplicate rows (recurring operation to reduce time-consuming)
+  group_by(Country) %>%
+  summarise_all(coalesce_by_column)
+
+# merge EV_ON_EBITDA & EV_ON_EBITDA_2016
+
+EV_ON_EBITDA <- merge(EV_ON_EBITDA,EV_ON_EBITDA_2016,by="Country") # Merge
+colnames(EV_ON_EBITDA)[5] <- c("2016") # change column name 
+
+coalesce_by_column <- function(EV_ON_EBITDA) { # Function to combine rows (recurring operation to reduce time-consuming)
+  return(dplyr::coalesce(!!! as.list(EV_ON_EBITDA)))
+}
+
+EV_ON_EBITDA <- EV_ON_EBITDA %>% # Eliminating of duplicate rows (recurring operation to reduce time-consuming)
+  group_by(Country) %>%
+  summarise_all(coalesce_by_column)
+
+# merge EV_ON_EBITDA & EV_ON_EBITDA_2017
+
+EV_ON_EBITDA <- merge(EV_ON_EBITDA,EV_ON_EBITDA_2017,by="Country", all = TRUE, allow.cartesian=TRUE) # Merge
+colnames(EV_ON_EBITDA)[6] <- c("2017") # change column name 
+
+coalesce_by_column <- function(EV_ON_EBITDA) { # Function to combine rows (recurring operation to reduce time-consuming)
+  return(dplyr::coalesce(!!! as.list(EV_ON_EBITDA)))
+}
+
+EV_ON_EBITDA <- EV_ON_EBITDA %>% # Eliminating of duplicate rows (recurring operation to reduce time-consuming)
+  group_by(Country) %>%
+  summarise_all(coalesce_by_column)
+
+# merge EV_ON_EBITDA & EV_ON_EBITDA_2018
+
+EV_ON_EBITDA <- merge(EV_ON_EBITDA,EV_ON_EBITDA_2018,by="Country") # Merge
+colnames(EV_ON_EBITDA)[7] <- c("2018") # change column name 
+
+coalesce_by_column <- function(EV_ON_EBITDA) { # Function to combine rows (recurring operation to reduce time-consuming)
+  return(dplyr::coalesce(!!! as.list(EV_ON_EBITDA)))
+}
+
+EV_ON_EBITDA <- EV_ON_EBITDA %>% # Eliminating of duplicate rows (recurring operation to reduce time-consuming)
+  group_by(Country) %>%
+  summarise_all(coalesce_by_column)
+
+# merge EV_ON_EBITDA EV_ON_EBITDA_2019
+
+EV_ON_EBITDA <- merge(EV_ON_EBITDA,EV_ON_EBITDA_2019,by="Country") # Merge
+colnames(EV_ON_EBITDA)[8] <- c("2019") # change column name
+
+coalesce_by_column <- function(EV_ON_EBITDA) { # Function to combine rows (recurring operation to reduce time-consuming)
+  return(dplyr::coalesce(!!! as.list(EV_ON_EBITDA)))
+}
+
+EV_ON_EBITDA <- EV_ON_EBITDA %>% # Eliminating of duplicate rows (recurring operation to reduce time-consuming)
+  group_by(Country) %>%
+  summarise_all(coalesce_by_column)
+
+# merge EV_ON_EBITDA & EV_ON_EBITDA_2020
+
+EV_ON_EBITDA <- merge(EV_ON_EBITDA,EV_ON_EBITDA_2020,by="Country") # Merge
+colnames(EV_ON_EBITDA)[9] <- c("2020") # change column name 
+
+coalesce_by_column <- function(EV_ON_EBITDA) { # Function to combine rows (recurring operation to reduce time-consuming)
+  return(dplyr::coalesce(!!! as.list(EV_ON_EBITDA)))
+}
+
+EV_ON_EBITDA <- EV_ON_EBITDA %>% # Eliminating of duplicate rows (recurring operation to reduce time-consuming)
+  group_by(Country) %>%
+  summarise_all(coalesce_by_column)
+
+# Step 3: Rename the rows with the country name 
+
+EV_ON_EBITDA <- EV_ON_EBITDA %>% 
+  column_to_rownames(var="Country")
+
+# Step 4: Add mean of EV_ON_EBITDA in the new dataframe
+
+EV_ON_EBITDA$Mean <- apply(EV_ON_EBITDA[,1:8],1,mean,na.rm=TRUE) # Add, as last column, the mean of the observation EV_ON_EBITDAiod for each country 
+
+EV_ON_EBITDA <- round(EV_ON_EBITDA,2) # Rounding value
+
+# Step 5: Make a ranking  
+
+pacman::p_load( # Load package
+  DT
+)
+
+datatable(EV_ON_EBITDA) %>% # table with conditional formatting (range:  -10, 7, 12.5, 17.5, 25, 50)
+  formatStyle(
+    names(EV_ON_EBITDA),
+    backgroundColor = styleInterval(
+      cuts = c(1, 1.5, 2, 3, 5, 50), 
+      values = c('#FFFFFF', '#FFF4F4', '#FFE8E8', '#FFD2D2', '#FFBBBB', '#FF9999', '#FF7777')
+    )
+  ) %>%
+  formatStyle(
+    names(EV_ON_EBITDA),
+    backgroundColor = styleEqual(0, "white")
+  )
+
+```
+
+*Note:* Despite each sector has its own range, according to litterature, we can consider that a stock with *EV/EBITDA* < 7.5 is underevaluated and a stock with *EV/EBITDA* > 20 overevaluated.
+
+### EV/Sales
+
+
+```{r}
+
+# Step 1: Extracting EV_ON_Sales for each year 
+
+EV_ON_Sales_2013 <- subset(corporate_finance_measure_outliers_corrected,Year == '2013'| is.na(`Average of EV/Sales`), 
+                   select = c('Country','Average of EV/Sales'))
+EV_ON_Sales_2014 <- subset(corporate_finance_measure_outliers_corrected,Year == '2014'| is.na(`Average of EV/Sales`), 
+                   select = c('Country','Average of EV/Sales'))
+EV_ON_Sales_2015 <- subset(corporate_finance_measure_outliers_corrected,Year == '2015'| is.na(`Average of EV/Sales`), 
+                   select = c('Country','Average of EV/Sales'))
+EV_ON_Sales_2016 <- subset(corporate_finance_measure_outliers_corrected,Year == '2016'| is.na(`Average of EV/Sales`), 
+                   select = c('Country','Average of EV/Sales'))
+EV_ON_Sales_2017 <- subset(corporate_finance_measure_outliers_corrected,Year == '2017'| is.na(`Average of EV/Sales`), 
+                   select = c('Country','Average of EV/Sales'))
+EV_ON_Sales_2018 <- subset(corporate_finance_measure_outliers_corrected,Year == '2018'| is.na(`Average of EV/Sales`), 
+                   select = c('Country','Average of EV/Sales'))
+EV_ON_Sales_2019 <- subset(corporate_finance_measure_outliers_corrected,Year == '2019'| is.na(`Average of EV/Sales`), 
+                   select = c('Country','Average of EV/Sales'))
+EV_ON_Sales_2020 <- subset(corporate_finance_measure_outliers_corrected,Year == '2020'| is.na(`Average of EV/Sales`), 
+                   select = c('Country','Average of EV/Sales'))
+
+# Step 2: Merging EV_ON_Sales data frames 
+
+# merge EV_ON_Sales_2013 & EV_ON_Sales_2014
+
+EV_ON_Sales <- merge(EV_ON_Sales_2013,EV_ON_Sales_2014,by="Country") # Merge
+colnames(EV_ON_Sales)[2:3] <- c("2013","2014") # change column name for new columns
+
+coalesce_by_column <- function(EV_ON_Sales) { # Function to combine rows (recurring operation to reduce time-consuming)
+  return(dplyr::coalesce(!!! as.list(EV_ON_Sales)))
+}
+
+EV_ON_Sales <- EV_ON_Sales %>% # Eliminating of duplicate rows (recurring operation to reduce time-consuming)
+  group_by(Country) %>%
+  summarise_all(coalesce_by_column)
+
+# merge EV_ON_Sales & EV_ON_Sales_2015
+
+EV_ON_Sales <- merge(EV_ON_Sales,EV_ON_Sales_2015,by="Country") # Merge
+colnames(EV_ON_Sales)[4] <- c("2015") # change column name 
+
+coalesce_by_column <- function(EV_ON_Sales) { # Function to combine rows (recurring operation to reduce time-consuming)
+  return(dplyr::coalesce(!!! as.list(EV_ON_Sales)))
+}
+
+EV_ON_Sales <- EV_ON_Sales %>% # Eliminating of duplicate rows (recurring operation to reduce time-consuming)
+  group_by(Country) %>%
+  summarise_all(coalesce_by_column)
+
+# merge EV_ON_Sales & EV_ON_Sales_2016
+
+EV_ON_Sales <- merge(EV_ON_Sales,EV_ON_Sales_2016,by="Country") # Merge
+colnames(EV_ON_Sales)[5] <- c("2016") # change column name 
+
+coalesce_by_column <- function(EV_ON_Sales) { # Function to combine rows (recurring operation to reduce time-consuming)
+  return(dplyr::coalesce(!!! as.list(EV_ON_Sales)))
+}
+
+EV_ON_Sales <- EV_ON_Sales %>% # Eliminating of duplicate rows (recurring operation to reduce time-consuming)
+  group_by(Country) %>%
+  summarise_all(coalesce_by_column)
+
+# merge EV_ON_Sales & EV_ON_Sales_2017
+
+EV_ON_Sales <- merge(EV_ON_Sales,EV_ON_Sales_2017,by="Country", all = TRUE, allow.cartesian=TRUE) # Merge
+colnames(EV_ON_Sales)[6] <- c("2017") # change column name 
+
+coalesce_by_column <- function(EV_ON_Sales) { # Function to combine rows (recurring operation to reduce time-consuming)
+  return(dplyr::coalesce(!!! as.list(EV_ON_Sales)))
+}
+
+EV_ON_Sales <- EV_ON_Sales %>% # Eliminating of duplicate rows (recurring operation to reduce time-consuming)
+  group_by(Country) %>%
+  summarise_all(coalesce_by_column)
+
+# merge EV_ON_Sales & EV_ON_Sales_2018
+
+EV_ON_Sales <- merge(EV_ON_Sales,EV_ON_Sales_2018,by="Country") # Merge
+colnames(EV_ON_Sales)[7] <- c("2018") # change column name 
+
+coalesce_by_column <- function(EV_ON_Sales) { # Function to combine rows (recurring operation to reduce time-consuming)
+  return(dplyr::coalesce(!!! as.list(EV_ON_Sales)))
+}
+
+EV_ON_Sales <- EV_ON_Sales %>% # Eliminating of duplicate rows (recurring operation to reduce time-consuming)
+  group_by(Country) %>%
+  summarise_all(coalesce_by_column)
+
+# merge EV_ON_Sales EV_ON_Sales_2019
+
+EV_ON_Sales <- merge(EV_ON_Sales,EV_ON_Sales_2019,by="Country") # Merge
+colnames(EV_ON_Sales)[8] <- c("2019") # change column name
+
+coalesce_by_column <- function(EV_ON_Sales) { # Function to combine rows (recurring operation to reduce time-consuming)
+  return(dplyr::coalesce(!!! as.list(EV_ON_Sales)))
+}
+
+EV_ON_Sales <- EV_ON_Sales %>% # Eliminating of duplicate rows (recurring operation to reduce time-consuming)
+  group_by(Country) %>%
+  summarise_all(coalesce_by_column)
+
+# merge EV_ON_Sales & EV_ON_Sales_2020
+
+EV_ON_Sales <- merge(EV_ON_Sales,EV_ON_Sales_2020,by="Country") # Merge
+colnames(EV_ON_Sales)[9] <- c("2020") # change column name 
+
+coalesce_by_column <- function(EV_ON_Sales) { # Function to combine rows (recurring operation to reduce time-consuming)
+  return(dplyr::coalesce(!!! as.list(EV_ON_Sales)))
+}
+
+EV_ON_Sales <- EV_ON_Sales %>% # Eliminating of duplicate rows (recurring operation to reduce time-consuming)
+  group_by(Country) %>%
+  summarise_all(coalesce_by_column)
+
+# Step 3: Rename the rows with the country name 
+
+EV_ON_Sales <- EV_ON_Sales %>% 
+  column_to_rownames(var="Country")
+
+# Step 4: Add mean of EV_ON_Sales in the new dataframe
+
+EV_ON_Sales$Mean <- apply(EV_ON_Sales[,1:8],1,mean,na.rm=TRUE) # Add, as last column, the mean of the observation EV_ON_Sales for each country 
+
+EV_ON_Sales <- round(EV_ON_Sales,2) # Rounding value
+
+# Step 5: Make a ranking  
+
+pacman::p_load( # Load package
+  DT
+)
+
+datatable(EV_ON_Sales) %>% # table with conditional formatting (range:  -10, 7, 12.5, 17.5, 25, 50)
+  formatStyle(
+    names(EV_ON_Sales),
+    backgroundColor = styleInterval(
+      cuts = c(1, 1.5, 2, 3, 5, 50), 
+      values = c('#FFFFFF', '#FFF4F4', '#FFE8E8', '#FFD2D2', '#FFBBBB', '#FF9999', '#FF7777')
+    )
+  ) %>%
+  formatStyle(
+    names(EV_ON_Sales),
+    backgroundColor = styleEqual(0, "white")
+  )
+
+```
+
+
+*Note:* Despite each sector has its own range, according litterature, we can consider that a stock with *EV/Sales* < 1 is underevaluated and a stock with *EV/Sales* > 2.5 overevaluated.
+
+## Evolution of key variables for different groups of countries
+
+To gain visibility, for each key variable, we construct 3 charts composing of 2 groups of countries.
+
+* Group 1: Group composed of countries with the best ratio on average 
+* Group 2: Group composed of countries with the largest market capitalization on average 
+
+### Price-earning ratio {.tabset}
+
+```{r warning = FALSE, message = FALSE}
+
+    ### Visualization members of group 1:
+
+PER %>% # Visualization of countries with the best ratio
+  arrange(Mean) %>%
+  head(10)
+```
+
+```{r include = FALSE, warning = FALSE, message = FALSE}
+
+Year <- lubridate::ymd(corporate_finance_measure_outliers_corrected$Year, truncated = 2L) # convert numeric to date
+corporate_finance_measure_outliers_corrected_date <- corporate_finance_measure_outliers_corrected # copy of principal dataframe
+corporate_finance_measure_outliers_corrected_date$Year <- Year # remplacement  of the converted column
+rm(Year) # removing of column created
+str(corporate_finance_measure_outliers_corrected_date) # check format column 
+
+```
+
+```{r warning = FALSE, message = FALSE}
+
+    ### Creating group 1:
+
+PER_BEST <- subset(corporate_finance_measure_outliers_corrected_date, # Create dataframe 
+                   Country == "Ecuador" | 
+                   Country == "Mongolia" |
+                   Country == "Marshall Islands" |
+                   Country == "Togo" |
+                   Country == "Malawi" |
+                   Country == "Uganda" |
+                   Country == "Lebanon" |
+                   Country == "Ghana" |
+                   Country == "Burkina Faso" |
+                   Country == "Zambia", 
+                   select = c('Country','Year','Average of Current PE'))
+
+PER_BEST <- PER_BEST[with(PER_BEST, order(Year, Country)), ] # re-ordering data
+
+### Creating group 2:
+
+corporate_finance_measure_outliers_corrected_date %>% # Visualization of countries with the largest MC
+  group_by(Country) %>%
+  summarise(Avg_MC = mean(`Sum of Market Cap (in US $)`)) %>%
+  arrange(desc(Avg_MC))
+
+Largest_MC <- subset(corporate_finance_measure_outliers_corrected_date, # Create dataframe 
+                     Country == "United States" | 
+                     Country == "China" |
+                     Country == "Japan" |
+                     Country == "United Kingdom" |
+                     Country == "France" |
+                     Country == "Canada" |
+                     Country == "Hong Kong" |
+                     Country == "Germany" |
+                     Country == "India" |
+                     Country == "Switzerland", 
+                   select = c('Country','Year','Average of Current PE','Average of PBV','Average of PS','Average of EV/EBITDA','Average of EV/Sales','Average of Dividend Yield (in %)'))
+
+Largest_MC <- Largest_MC[with(Largest_MC, order(Year, Country)), ] # re-ordering data
+
+rm(newdata)
+
+```
+
+#### Best Price-earning ratio
+```{r warning = FALSE, message = FALSE}
+hchart( # Chart line
+  PER_BEST, "line", 
+  hcaes(x = Year, y = `Average of Current PE`, group = Country)
+)
+```
+
+#### Largest Market Capitalization
+```{r warning = FALSE, message = FALSE}
+hchart( # Chart line
+  Largest_MC, "line", 
+  hcaes(x = Year, y = `Average of Current PE`, group = Country)
+)
+```
+
+
+### Price-to-Book Value {.tabset}
+
+```{r warning = FALSE, message = FALSE}
+
+    ### Creating group 1:
+
+PBV %>% # Visualization of countries with the best ratio
+  arrange(Mean) %>%
+  head(10)
+
+PBV_BEST <- subset(corporate_finance_measure_outliers_corrected_date, # Create dataframe 
+                   Country == "Togo" | 
+                   Country == "Gabon" |
+                   Country == "Slovenia" |
+                   Country == "Lebanon" |
+                   Country == "Liechtenstein" |
+                   Country == "Barbados" |
+                   Country == "Cyprus" |
+                   Country == "Kuwait" |
+                   Country == "Bahrain" |
+                   Country == "Monaco", 
+                   select = c('Country','Year','Average of PBV'))
+
+PBV_BEST <- PBV_BEST[with(PBV_BEST, order(Year, Country)), ] # re-ordering data
+
+```
+
+#### Best PBV
+```{r warning = FALSE, message = FALSE}
+hchart( # Chart line
+  PBV_BEST, "line", 
+  hcaes(x = Year, y = `Average of PBV`, group = Country)
+)
+```
+
+#### Largest Market Capitalization
+```{r warning = FALSE, message = FALSE}
+hchart( # Chart line
+  Largest_MC, "line", 
+  hcaes(x = Year, y = `Average of PBV`, group = Country)
+)
+```
+
+### EV/EBITDA {.tabset}
+
+```{r warning = FALSE, message = FALSE}
+
+    ### Creating group 1:
+
+EV_ON_EBITDA %>% # Visualization of countries with the best ratio
+  arrange(Mean) %>%
+  head(10)
+
+EV_ON_EBITDA_BEST <- subset(corporate_finance_measure_outliers_corrected_date, # Create dataframe 
+                   Country == "Liechtenstein" | 
+                   Country == "Gabon" |
+                   Country == "Burkina Faso" |
+                   Country == "Cameroon" |
+                   Country == "Senegal" |
+                   Country == "Curaçao" |
+                   Country == "Lebanon" |
+                   Country == "Uruguay" |
+                   Country == "Barbados" |
+                   Country == "Ecuador", 
+                   select = c('Country','Year','Average of EV/EBITDA'))
+
+EV_ON_EBITDA_BEST <- EV_ON_EBITDA_BEST[with(EV_ON_EBITDA_BEST, order(Year, Country)), ] # re-ordering data
+
+```
+
+#### Best EV/EBITDA
+```{r warning = FALSE, message = FALSE}
+hchart( # Chart line
+  EV_ON_EBITDA_BEST, "line", 
+  hcaes(x = Year, y = `Average of EV/EBITDA`, group = Country)
+)
+```
+
+#### Largest Market Capitalization
+```{r warning = FALSE, message = FALSE}
+hchart( # Chart line
+  Largest_MC, "line", 
+  hcaes(x = Year, y = `Average of EV/EBITDA`, group = Country)
+)
+```
+
+### EV/Sales {.tabset}
+
+```{r warning = FALSE, message = FALSE}
+
+    ### Creating group 1:
+
+EV_ON_Sales %>% # Visualization of countries with the best ratio
+  arrange(Mean) %>%
+  head(10)
+
+EV_ON_SALES_BEST <- subset(corporate_finance_measure_outliers_corrected_date, # Create dataframe 
+                   Country == "Liechtenstein" | 
+                   Country == "Gabon" |
+                   Country == "Uruguay" |
+                   Country == "Togo" |
+                   Country == "Barbados" |
+                   Country == "Ecuador" |
+                   Country == "Curaçao" |
+                   Country == "Ghana" |
+                   Country == "Ivory Coast" |
+                   Country == "Uganda", 
+                   select = c('Country','Year','Average of EV/Sales'))
+
+EV_ON_SALES_BEST <- EV_ON_SALES_BEST[with(EV_ON_SALES_BEST, order(Year, Country)), ] # re-ordering data
+
+```
+
+#### Best EV/Sales
+```{r warning = FALSE, message = FALSE}
+hchart( # Chart line
+  EV_ON_SALES_BEST, "line", 
+  hcaes(x = Year, y = `Average of EV/Sales`, group = Country)
+)
+```
+
+#### Largest Market Capitalization
+```{r warning = FALSE, message = FALSE}
+hchart( # Chart line
+  Largest_MC, "line", 
+  hcaes(x = Year, y = `Average of EV/Sales`, group = Country)
+)
+```
+
+
+## World map: keys variables for value investing   {.tabset}
+
+To gain visibility, we make the mean, for each country, on the entire observation period (otherwise the number of maps would be too important).
+
+### Price-earning ratio
+
+```{r warning = FALSE, message = FALSE}
+
+pacman::p_load( # Load package
+  tibble
+)
+
+PER_Country <- PER
+
+PER_Country <- tibble::rownames_to_column(PER, "VALUE") # Convert row names into column of the PER dataframa
+colnames(PER_Country)[1] <- c("Country") # change column name 
+
+PER_Country[PER_Country == "United States"] <- "United States of America" # Replace of a value to match with worldgeojson's label
+
+highchart() %>% # Shade of blue 
+  hc_add_series_map(
+    worldgeojson, PER_Country, value = "Mean", joinBy = c('name','Country'),
+  name = "PER_Country"
+  )  %>% 
+  hc_title(text = "PER (2013-2020)")
+
+```
+
+### Price-to-Book Value (PBV)
+
+```{r warning = FALSE, message = FALSE}
+
+PBV_Country <- PBV
+
+PBV_Country <- tibble::rownames_to_column(PBV, "VALUE") # Convert row names into column of the PBV dataframa
+colnames(PBV_Country)[1] <- c("Country") # change column name 
+
+PBV_Country[PBV_Country == "United States"] <- "United States of America" # Replace of a value to match with worldgeojson's label
+
+highchart() %>% # Map with shade of blue 
+  hc_add_series_map(
+    worldgeojson, PBV_Country, value = "Mean", joinBy = c('name','Country'),
+    name = "PBV_Country"
+  )  %>% 
+  hc_title(text = "PBV (2013-2020)")
+
+```
+
+### EV/EBITDA
+
+```{r warning = FALSE, message = FALSE}
+
+EV_ON_EBITDA_Country <- EV_ON_EBITDA
+
+EV_ON_EBITDA_Country <- tibble::rownames_to_column(EV_ON_EBITDA_Country, "VALUE") # Convert row names into column of the EV_ON_EBITDA_Country dataframe
+colnames(EV_ON_EBITDA_Country)[1] <- c("Country") # change column name 
+
+EV_ON_EBITDA_Country[EV_ON_EBITDA_Country == "United States"] <- "United States of America" # Replace of a value to match with worldgeojson's label
+
+highchart() %>% # Map with shade of blue 
+  hc_add_series_map(
+    worldgeojson, EV_ON_EBITDA_Country, value = "Mean", joinBy = c('name','Country'),
+    name = "EV_ON_EBITDA_Country"
+  )  %>% 
+  hc_title(text = "EV/EBITDA (2013-2020)")
+
+```
+
+### EV/Sales
+
+```{r warning = FALSE, message = FALSE}
+EV_ON_SALES_Country <- EV_ON_Sales
+
+EV_ON_SALES_Country <- tibble::rownames_to_column(EV_ON_SALES_Country, "VALUE") # Convert row names into column of the EV_ON_SALES_Country dataframe
+colnames(EV_ON_SALES_Country)[1] <- c("Country") # change column name 
+
+EV_ON_SALES_Country[EV_ON_SALES_Country == "United States"] <- "United States of America" # Replace of a value to match with worldgeojson's label
+
+highchart() %>% # Map with shade of blue 
+  hc_add_series_map(
+    worldgeojson, EV_ON_SALES_Country, value = "Mean", joinBy = c('name','Country'),
+    name = "EV_ON_SALES_Country"
+  )  %>% 
+  hc_title(text = "EV/Sales (2013-2020)")
+```
