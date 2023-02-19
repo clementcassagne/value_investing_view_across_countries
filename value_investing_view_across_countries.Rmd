@@ -1536,7 +1536,7 @@ highchart() %>% # Shade of blue
 
 ```
 
-### Price-to-Book Value (PBV)
+### Price-to-Book Value
 
 ```{r warning = FALSE, message = FALSE}
 
