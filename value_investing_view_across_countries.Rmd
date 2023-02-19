@@ -10,6 +10,10 @@ output:
     df_print: paged
 ---
 
+**Summary**
+
+This review took corporate data collected annually by Prof. Aswath Damodaran (NYU), and assembled it (section 1), and then explored it (section 2) to observe trends over the past decade and identify potential inequalities across countries in terms of value investing (section 3).
+
 # Preparation & Data Cleaning
 
 ## Data Preparation
